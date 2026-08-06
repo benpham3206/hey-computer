@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+logs/
+models/
+*.mp3
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.pid
+.env
+auth.json
