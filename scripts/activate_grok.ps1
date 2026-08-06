@@ -1,4 +1,4 @@
-# Focus an existing Grok Build window, or launch one, then start voice dictation.
+# Launch a fresh visible Grok Build PowerShell window, then start dictation.
 param(
     [switch]$NoVoice,
     [int]$SettleMs = 900
@@ -19,17 +19,12 @@ if (-not (Test-Path $GrokExe)) {
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Collections.Generic;
-using System.Diagnostics;
 
 public static class GrokWin {
     public delegate bool EnumProc(IntPtr hWnd, IntPtr lParam);
 
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr lParam);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
-    [DllImport("user32.dll")] static extern int GetWindowText(IntPtr hWnd, StringBuilder s, int n);
-    [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr hWnd);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
@@ -41,30 +36,23 @@ public static class GrokWin {
 
     const int SW_RESTORE = 9;
 
-    public static List<IntPtr> FindCandidates() {
-        var hits = new List<IntPtr>();
-        EnumWindows((hWnd, lParam) => {
-            if (!IsWindowVisible(hWnd)) return true;
-            int len = GetWindowTextLength(hWnd);
-            if (len <= 0) return true;
-            var sb = new StringBuilder(len + 1);
-            GetWindowText(hWnd, sb, sb.Capacity);
-            string title = sb.ToString();
-            uint pid;
-            GetWindowThreadProcessId(hWnd, out pid);
-            string proc = "";
-            try { proc = Process.GetProcessById((int)pid).ProcessName; } catch {}
-
-            bool titleHit =
-                title.IndexOf("grok", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                title.IndexOf("Grok Build", StringComparison.OrdinalIgnoreCase) >= 0;
-            bool procHit = proc.Equals("grok", StringComparison.OrdinalIgnoreCase);
-
-            // Windows Terminal tabs: title often set to "Grok Build" by our launcher
-            if (titleHit || procHit) hits.Add(hWnd);
-            return true;
-        }, IntPtr.Zero);
-        return hits;
+    public static IntPtr WaitForWindow(int processId, int timeoutMs) {
+        var deadline = Environment.TickCount + timeoutMs;
+        do {
+            IntPtr found = IntPtr.Zero;
+            EnumWindows((hWnd, lParam) => {
+                uint pid;
+                GetWindowThreadProcessId(hWnd, out pid);
+                if ((int)pid == processId && IsWindowVisible(hWnd)) {
+                    found = hWnd;
+                    return false;
+                }
+                return true;
+            }, IntPtr.Zero);
+            if (found != IntPtr.Zero) return found;
+            System.Threading.Thread.Sleep(100);
+        } while (Environment.TickCount - deadline < 0);
+        return IntPtr.Zero;
     }
 
     public static bool ForceForeground(IntPtr hWnd) {
@@ -81,7 +69,7 @@ public static class GrokWin {
         if (targetThread != 0 && targetThread != cur) AttachThreadInput(cur, targetThread, true);
 
         BringWindowToTop(hWnd);
-        bool ok = SetForegroundWindow(hWnd);
+        bool ok = SetForegroundWindow(hWnd) && GetForegroundWindow() == hWnd;
 
         if (fgThread != 0 && fgThread != cur) AttachThreadInput(cur, fgThread, false);
         if (targetThread != 0 && targetThread != cur) AttachThreadInput(cur, targetThread, false);
@@ -96,39 +84,30 @@ function Send-CtrlSpace {
     $wshell.SendKeys("^{ }")
 }
 
-$hwnds = [GrokWin]::FindCandidates()
-$launched = $false
+$PowerShellExe = Join-Path $PSHOME "powershell.exe"
+$escapedGrokExe = $GrokExe.Replace("'", "''")
+$bootstrap = @'
+$Host.UI.RawUI.WindowTitle = 'Grok Build'
+& '{0}'
+'@ -f $escapedGrokExe
+$encodedBootstrap = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($bootstrap))
+$grokHostProcess = Start-Process -FilePath $PowerShellExe -ArgumentList @(
+    '-NoExit',
+    '-EncodedCommand', $encodedBootstrap
+) -PassThru
 
-if ($hwnds.Count -eq 0) {
-    $wt = Get-Command wt.exe -ErrorAction SilentlyContinue
-    if ($wt) {
-        Start-Process -FilePath $wt.Source -ArgumentList @(
-            "-w", "0",
-            "new-tab",
-            "--title", "Grok Build",
-            $GrokExe
-        ) | Out-Null
-    } else {
-        Start-Process -FilePath $GrokExe | Out-Null
-    }
-    $launched = $true
-    $deadline = (Get-Date).AddSeconds(15)
-    while ((Get-Date) -lt $deadline) {
-        Start-Sleep -Milliseconds 350
-        $hwnds = [GrokWin]::FindCandidates()
-        if ($hwnds.Count -gt 0) { break }
-    }
-}
-
-if ($hwnds.Count -eq 0) {
-    Write-Host "WARN: launched=$launched no Grok window found"
-    if (-not $NoVoice) { Send-CtrlSpace }
+$target = [GrokWin]::WaitForWindow($grokHostProcess.Id, 15000)
+if ($target -eq [IntPtr]::Zero) {
+    Write-Host "WARN: launched=True no PowerShell host window found"
     exit 2
 }
 
-$target = $hwnds[0]
 $ok = [GrokWin]::ForceForeground($target)
-Write-Host "Focused hwnd=$target ok=$ok launched=$launched"
+if (-not $ok) {
+    Write-Host "WARN: launched=True could not foreground hwnd=$target"
+    exit 3
+}
+Write-Host "Focused hwnd=$target ok=$ok launched=True"
 Start-Sleep -Milliseconds $SettleMs
 
 if (-not $NoVoice) {

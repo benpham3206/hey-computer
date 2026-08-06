@@ -71,11 +71,12 @@ The first start downloads the `hey_computer.onnx` wake model if it is missing an
 ## Use
 
 1. Say **“hey computer.”**
-2. Wait for the spoken **“Listening”** acknowledgement.
-3. Speak your request.
-4. Stay silent for two seconds.
-5. Grok submits the prompt only if the same Grok window is still foreground.
-6. The agent performs the action and speaks a one-sentence result.
+2. A fresh visible PowerShell window opens running Grok Build, then dictation starts.
+3. Wait for the spoken **“Listening”** acknowledgement.
+4. Speak your request.
+5. Stay silent for two seconds.
+6. Grok submits the prompt only if the same Grok window is still foreground.
+7. The agent performs the action and speaks a one-sentence result.
 
 Manual `Esc`, `Ctrl+Space`, and `Enter` controls remain available.
 
