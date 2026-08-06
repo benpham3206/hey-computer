@@ -2,13 +2,13 @@
 
 Hands-free Windows control for Grok Build and Codex:
 
-> “Hey computer” (or “computer”) → spoken “Listening” acknowledgement → Grok dictation → submit after silence → computer-use action → one-sentence spoken result.
+> “Hey computer” → spoken “Listening” acknowledgement → Grok dictation → submit after silence → computer-use action → one-sentence spoken result.
 
 The wake word runs locally with openWakeWord. Speech-to-text is provided by Grok Build, desktop actions use CUA Driver, and spoken responses use xAI's `carina` voice with an existing Grok OAuth login.
 
 ## Features
 
-- Always-on local wake detection for **“hey computer”** and the shorter **“computer”** trigger
+- Always-on local wake detection for **“hey computer”**
 - Cached “Listening” acknowledgement that finishes before dictation begins
 - Automatic prompt submission after speech followed by two seconds of silence
 - Exact-window foreground check before automatic submission
@@ -70,7 +70,7 @@ The first start downloads the `hey_computer.onnx` wake model if it is missing an
 
 ## Use
 
-1. Say **“hey computer”** or **“computer.”**
+1. Say **“hey computer.”**
 2. Wait for the spoken **“Listening”** acknowledgement.
 3. Speak your request.
 4. Stay silent for two seconds.
@@ -81,7 +81,7 @@ Manual `Esc`, `Ctrl+Space`, and `Enter` controls remain available.
 
 ## Tune wake detection
 
-The default threshold is `0.4`, which is intentionally sensitive enough for both supported phrases on the original setup.
+The default threshold is `0.4`, calibrated for **“hey computer.”** The standalone word **“computer”** needs a separate wake model; lowering this threshold to catch it would increase false wakes.
 
 ```powershell
 # Fewer false wakes
@@ -91,7 +91,7 @@ powershell -File .\scripts\start-wake.ps1 -Threshold 0.5
 powershell -File .\scripts\start-wake.ps1 -Threshold 0.35
 ```
 
-Run the live score display before tuning:
+Run the live score display before tuning. Say each candidate phrase once and pause two seconds; the final summary reports one peak per attempt and a conservative recommendation:
 
 ```powershell
 $env:PYTHONIOENCODING = 'utf-8'

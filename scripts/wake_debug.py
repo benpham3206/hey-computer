@@ -57,6 +57,7 @@ from wake_listener import (  # noqa: E402
     list_devices,
     speak,
 )
+from wake_debug_summary import AttemptTracker, recommend_threshold  # noqa: E402
 
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 EVENTS = LOG_DIR / "events.jsonl"
@@ -101,7 +102,7 @@ def run(
     print(f"Device:     {device if device is not None else 'default'}")
     print(f"Activate:   {activate}  (open Grok on wake)")
     print(f"Events log: {EVENTS}")
-    print("Say: hey computer")
+    print("Say each phrase once, then pause 2 seconds between attempts.")
     print("Legend: mic peak | score bar | score | status")
     print("-" * 72, flush=True)
 
@@ -132,6 +133,7 @@ def run(
         "frames": 0,
         "max_score": 0.0,
         "wakes": 0,
+        "attempts": AttemptTracker(),
     }
     ui_interval = 1.0 / max(sample_hz, 0.5)
     t0 = time.time()
@@ -157,6 +159,7 @@ def run(
                 state["max_score"] = score
 
             now = time.time()
+            state["attempts"].observe(now, score)
             above = score >= threshold
             woke = False
             if above and (now - state["last_wake"]) >= 2.0:
@@ -223,6 +226,9 @@ def run(
     finally:
         if csv_file:
             csv_file.close()
+        attempts = state["attempts"].finish(time.time())
+        attempt_peaks = [score for _at, score in attempts]
+        suggested = recommend_threshold(attempt_peaks)
         emit_event(
             "debug_stop",
             frames=state["frames"],
@@ -230,11 +236,31 @@ def run(
             wakes=state["wakes"],
             elapsed_s=round(time.time() - t0, 1),
         )
+        if attempts:
+            emit_event(
+                "debug_attempts",
+                attempts=[
+                    {"time": datetime.fromtimestamp(at).astimezone().isoformat(), "peak": round(score, 4)}
+                    for at, score in attempts
+                ],
+                recommended_threshold=suggested,
+            )
         print(
             f"\nSummary: frames={state['frames']}  max_score={state['max_score']:.3f}  "
             f"wakes={state['wakes']}  threshold={threshold}",
             flush=True,
         )
+        if attempts:
+            print("Attempt peaks (speak one phrase, then pause 2 seconds):", flush=True)
+            for at, score in attempts:
+                verdict = "would wake" if score >= threshold else "below threshold"
+                stamp = datetime.fromtimestamp(at).strftime("%H:%M:%S")
+                print(f"  {stamp}  peak={score:.3f}  {verdict}", flush=True)
+            print(
+                f"Suggested threshold for these attempts: {suggested:.2f} "
+                "(verify false-wake behavior before changing the production listener).",
+                flush=True,
+            )
         if state["wakes"] == 0:
             print(
                 "No wake detected. Tips:\n"

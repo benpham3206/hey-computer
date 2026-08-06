@@ -124,7 +124,7 @@ Do **not** dump raw URLs, code fences, or tool dumps into the spoken path.
 
 ## Wake daemon ("hey computer")
 
-Always-on listener lives under this skill. At the default `0.4` threshold on the tuned Windows setup, both **“hey computer”** and the shorter **“computer”** are supported wake phrases:
+Always-on listener lives under this skill. The installed model recognizes **“hey computer”** at the default `0.4` threshold. **“Computer” alone is not a reliable alias**: it needs a separate wake model, not a lower threshold that could cause false wakes.
 
 | Script | Role |
 |--------|------|
@@ -181,7 +181,7 @@ When user runs `/voice-computer wake`, `start-wake`, or asks to enable the wake 
 python -u "$env:USERPROFILE\.grok\skills\voice-computer\scripts\wake_debug.py"
 ```
 
-You should see a updating line like:
+You should see an updating line like:
 
 ```text
 mic ▓▓▓··· 0.12 │ ████░░░░ 0.41 │ listening │ max=0.41 wakes=0
@@ -203,7 +203,9 @@ Tips:
 | WAKE but Grok does nothing | Production listener + SuperGrok voice; test `activate_grok.ps1` |
 
 ```powershell
-# 45s timed session + CSV
+# 45s timed session + CSV. Say each candidate phrase once and pause two
+# seconds: the summary reports one peak per attempt and a conservative
+# calibration suggestion.
 python -u "...\wake_debug.py" --seconds 45 --csv "$env:TEMP\wake.csv" --threshold 0.4
 
 # Full pipeline doctor
