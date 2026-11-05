@@ -290,7 +290,7 @@ def run(threshold: float, cooldown: float, device: int | None, announce: bool) -
                 emit_event("wake", score=round(float(score), 4), threshold=threshold)
 
                 def begin_dictation() -> None:
-                    nonlocal dictation_hwnd
+                    nonlocal dictation_hwnd, wake_in_progress
                     if announce:
                         if ack_ready:
                             play_mp3(LISTENING_MP3)
@@ -299,6 +299,9 @@ def run(threshold: float, cooldown: float, device: int | None, announce: bool) -
                         emit_event("tts_listening", cached=ack_ready)
                     dictation_hwnd = activate_grok()
                     emit_event("activate_grok", hwnd=dictation_hwnd)
+                    if not dictation_hwnd:
+                        wake_in_progress = False
+                        return
                     silence.start(time.time())
 
                 threading.Thread(target=begin_dictation, daemon=True).start()

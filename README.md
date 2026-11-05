@@ -71,7 +71,7 @@ The first start downloads the `hey_computer.onnx` wake model if it is missing an
 ## Use
 
 1. Say **“hey computer.”**
-2. A fresh visible PowerShell window opens running Grok Build, then dictation starts.
+2. A fresh visible PowerShell window opens running Grok Build. Dictation starts only after activation returns a nonzero window handle. If activation fails, the listener waits for another wake word.
 3. Wait for the spoken **“Listening”** acknowledgement.
 4. Speak your request.
 5. Stay silent for two seconds.
