@@ -164,7 +164,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.grok\skil
 **User flow after wake:**
 
 1. Say **hey computer** (room distance OK with a decent mic).
-2. PC opens a fresh visible PowerShell-hosted Grok window and starts dictation (you should hear "Listening" if TTS works).
+2. The PC opens a fresh visible PowerShell-hosted Grok window. Dictation starts only after activation returns a nonzero window handle. If activation fails, the listener waits for another wake word. You should hear "Listening" if TTS works.
 3. Speak the request, then remain silent for 2 seconds. The listener stops dictation and submits only if Grok is still foreground. Manual **Esc** / **Enter** controls remain available.
 4. This skill handles ack → CUA → spoken result.
 
