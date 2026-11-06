@@ -2,9 +2,11 @@ import contextlib
 import importlib
 import io
 import sys
+import tempfile
 import time
 import types
 import unittest
+import wave
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -141,6 +143,34 @@ class WakeListenerActivationTests(unittest.TestCase):
         )
         self.assertEqual(1, len(submissions))
         self.assertEqual(["-ExpectedHwnd", "42"], submissions[0][-2:])
+
+
+class InputWavInjectionTests(unittest.TestCase):
+    def test_wav_replay_reaches_wake_without_opening_a_device(self):
+        def no_device(**_kwargs):
+            raise AssertionError("InputStream must not open when --input-wav is given")
+
+        sounddevice.InputStream = no_device
+        listener.time = SimpleNamespace(time=lambda: 100.0, strftime=time.strftime, sleep=time.sleep)
+        listener.threading = SimpleNamespace(Thread=ImmediateThread)
+        listener.ensure_model = lambda: SCRIPTS.parent / "models" / "hey_computer.onnx"
+        listener.build_model = lambda _path: WakeModel(wake_calls=(2,))
+        events = []
+        listener.emit_event = lambda kind, **fields: events.append((kind, fields))
+
+        with tempfile.TemporaryDirectory() as temp, patch.object(listener, "activate_grok", lambda: None):
+            wav = Path(temp) / "clip.wav"
+            with wave.open(str(wav), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(16000)
+                w.writeframes(b"\0\0" * 1280 * 3)
+            with contextlib.redirect_stdout(io.StringIO()):
+                listener.run(threshold=0.4, cooldown=4.0, device=None, announce=False, input_wav=wav)
+
+        kinds = [kind for kind, _ in events]
+        self.assertIn("wake", kinds)
+        self.assertEqual(("input_wav_done", {"samples": 3840}), events[-1])
 
 
 if __name__ == "__main__":

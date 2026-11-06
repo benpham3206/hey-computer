@@ -11,6 +11,7 @@ Usage:
   python wake_listener.py
   python wake_listener.py --threshold 0.5 --cooldown 4
   python wake_listener.py --list-devices
+  python wake_listener.py --input-wav clip.wav   # test hook: replay a wav, no mic
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import subprocess
 import sys
 import threading
 import time
+import wave
 from pathlib import Path
 
 import numpy as np
@@ -214,6 +216,16 @@ def submit_grok(expected_hwnd: int | None) -> bool:
     return result.returncode == 0
 
 
+def read_wav(path: Path) -> np.ndarray:
+    """Load a 16 kHz mono 16-bit wav as float32 [-1, 1], the InputStream sample format."""
+    with wave.open(str(path), "rb") as w:
+        shape = (w.getframerate(), w.getnchannels(), w.getsampwidth())
+        if shape != (SAMPLE_RATE, 1, 2):
+            raise ValueError(f"{path}: need {SAMPLE_RATE} Hz mono 16-bit wav, got rate/channels/width={shape}")
+        pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
+    return pcm.astype(np.float32) / 32767.0
+
+
 def build_model(model_path: Path) -> Model:
     # Custom ONNX; openWakeWord uses its own feature models from package cache.
     return Model(
@@ -222,7 +234,13 @@ def build_model(model_path: Path) -> Model:
     )
 
 
-def run(threshold: float, cooldown: float, device: int | None, announce: bool) -> None:
+def run(
+    threshold: float,
+    cooldown: float,
+    device: int | None,
+    announce: bool,
+    input_wav: Path | None = None,
+) -> None:
     model_path = ensure_model()
     def log(msg: str) -> None:
         print(msg, flush=True)
@@ -308,6 +326,15 @@ def run(threshold: float, cooldown: float, device: int | None, announce: bool) -
 
     callback.buf = np.array([], dtype=np.int16)
 
+    if input_wav is not None:
+        # Test hook: replay the wav through the same callback; never opens a device.
+        # ponytail: one burst with wall-clock time, so silence-submit timing is not replayed.
+        audio = read_wav(input_wav)
+        emit_event("input_wav_start", path=str(input_wav), samples=len(audio))
+        callback(audio, len(audio), None, None)
+        emit_event("input_wav_done", samples=len(audio))
+        return
+
     kwargs = {
         "samplerate": SAMPLE_RATE,
         "channels": 1,
@@ -330,6 +357,12 @@ def main() -> None:
     p.add_argument("--device", type=int, default=None, help="sounddevice input device index")
     p.add_argument("--list-devices", action="store_true")
     p.add_argument("--quiet", action="store_true", help="No TTS announcements")
+    p.add_argument(
+        "--input-wav",
+        type=Path,
+        default=os.environ.get("HEY_COMPUTER_INPUT_WAV") or None,
+        help="Test hook: replay a 16 kHz mono wav instead of the microphone, then exit",
+    )
     args = p.parse_args()
 
     if args.list_devices:
@@ -342,6 +375,7 @@ def main() -> None:
             cooldown=args.cooldown,
             device=args.device,
             announce=not args.quiet,
+            input_wav=args.input_wav,
         )
     except KeyboardInterrupt:
         emit_event("listener_stop", reason="keyboard")
