@@ -80,6 +80,28 @@ The first start downloads the `hey_computer.onnx` wake model if it is missing an
 
 Manual `Esc`, `Ctrl+Space`, and `Enter` controls remain available.
 
+## macOS (partial)
+
+Wake detection, xAI TTS, and the unattended e2e harness run on macOS. Grok activation and submit are still Windows-only, so a wake logs `activate_grok` with `hwnd: null` and then waits.
+
+```sh
+uv venv .venv && uv pip install -p .venv -r requirements.txt
+# One-time: openWakeWord feature models (melspectrogram, embedding)
+.venv/bin/python -c "import openwakeword.utils as u; u.download_models(['__none__'])"
+scripts/start-wake.sh --threshold 0.4 --cooldown 4   # foreground; add --quiet for no TTS
+```
+
+The `sounddevice` macOS wheel includes PortAudio. If you install from source, run `brew install portaudio` first. Playback uses `afplay`. There is no `say` fallback: if xAI TTS fails, the command fails. The first mic open asks for Microphone permission for your terminal app.
+
+Unattended checks (no room mic). Evidence goes to `logs/e2e/<timestamp>/report.json`. Exit codes: 0 pass, 1 fail, 2 setup problem.
+
+```sh
+.venv/bin/python -u scripts/e2e_unattended.py --mode dry-run
+.venv/bin/python -u scripts/e2e_unattended.py --mode hey-alone   # replays tests/e2e_fixtures placeholder; must not wake
+```
+
+`hey-alone` uses the listener test hook `--input-wav` (or `HEY_COMPUTER_INPUT_WAV`). It is off by default. See `tests/e2e_fixtures/README.md`.
+
 ## Tune wake detection
 
 The default threshold is `0.4`, calibrated for **“hey computer.”** The standalone word **“computer”** needs a separate wake model; lowering this threshold to catch it would increase false wakes.
