@@ -113,8 +113,12 @@ def synthesize(
 
 
 def play_mp3(path: Path) -> None:
-    """Play MP3 on Windows via WPF MediaPlayer (no extra deps)."""
+    """Play MP3 and block until done: WPF MediaPlayer on Windows, afplay elsewhere."""
     path = path.resolve()
+    if sys.platform != "win32":
+        # No `say` fallback: xAI audio or a loud failure.
+        subprocess.run(["afplay", str(path)], check=True, timeout=300)
+        return
     # MediaPlayer needs a URI; block until done
     ps = f"""
 Add-Type -AssemblyName PresentationCore | Out-Null
@@ -131,22 +135,16 @@ $dur = $p.NaturalDuration.TimeSpan.TotalMilliseconds
 Start-Sleep -Milliseconds ([int][Math]::Max(200, $dur + 250))
 $p.Close()
 """
-    flags = 0
-    if sys.platform == "win32":
-        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     r = subprocess.run(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
         capture_output=True,
         text=True,
         timeout=300,
-        creationflags=flags,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     if r.returncode != 0:
         # Fallback: open with default app (non-blocking)
-        if sys.platform == "win32":
-            os.startfile(str(path))  # type: ignore[attr-defined]
-        else:
-            raise RuntimeError(r.stderr or r.stdout or "playback failed")
+        os.startfile(str(path))  # type: ignore[attr-defined]
 
 
 def speak(
@@ -228,9 +226,9 @@ def main() -> None:
         print(f"ok voice={args.voice} file={path}", flush=True)
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
-        # Fallback to SAPI if xAI fails
+        # Fallback to SAPI if xAI fails (Windows only; other platforms fail loud)
         sapi = Path(__file__).with_name("speak.ps1")
-        if sapi.is_file() and not args.no_play:
+        if sys.platform == "win32" and sapi.is_file() and not args.no_play:
             spoken = prepare_spoken_text(text, auto_speech_tags=False)
             # strip tags for SAPI
             import re
